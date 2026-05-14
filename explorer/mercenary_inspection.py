@@ -52,6 +52,8 @@ def load_inspection(path: str | Path = DEFAULT_INSPECTION_PATH) -> dict[str, Any
         return empty_inspection()
     raw.setdefault("version", 1)
     raw.setdefault("opened_synergy", False)
+    raw.setdefault("closed_synergy", False)
+    raw.setdefault("synergy_scroll_count", 0)
     raw.setdefault("visited_slots", {})
     raw.setdefault("scroll_count", 0)
     raw.setdefault("events", [])
@@ -59,7 +61,15 @@ def load_inspection(path: str | Path = DEFAULT_INSPECTION_PATH) -> dict[str, Any
 
 
 def empty_inspection() -> dict[str, Any]:
-    return {"version": 1, "opened_synergy": False, "visited_slots": {}, "scroll_count": 0, "events": []}
+    return {
+        "version": 1,
+        "opened_synergy": False,
+        "closed_synergy": False,
+        "synergy_scroll_count": 0,
+        "visited_slots": {},
+        "scroll_count": 0,
+        "events": [],
+    }
 
 
 def save_inspection(data: dict[str, Any], path: str | Path = DEFAULT_INSPECTION_PATH) -> None:
@@ -109,6 +119,38 @@ def next_list_target(screen_bounds: tuple[int, int], path: str | Path = DEFAULT_
         save_inspection(data, path)
         return target
     return None
+
+
+def next_knowledge_panel_target(screen_bounds: tuple[int, int], path: str | Path = DEFAULT_INSPECTION_PATH) -> dict[str, Any] | None:
+    width, height = normalized_bounds(screen_bounds)
+    data = load_inspection(path)
+    if data.get("opened_synergy") is not True or data.get("closed_synergy") is True:
+        return None
+    scroll_count = int(data.get("synergy_scroll_count", 0))
+    if scroll_count < 4:
+        data["synergy_scroll_count"] = scroll_count + 1
+        target = {
+            "id": f"synergy_scroll_{scroll_count + 1}",
+            "kind": "synergy_scroll",
+            "x": width // 2,
+            "y": round(height * 0.78),
+            "x2": width // 2,
+            "y2": round(height * 0.30),
+            "duration_ms": 650,
+        }
+        append_event(data, "scroll_synergy_panel", target)
+        save_inspection(data, path)
+        return target
+    data["closed_synergy"] = True
+    target = {
+        "id": "close_synergy_panel",
+        "kind": "close_synergy",
+        "x": width // 2,
+        "y": round(height * 0.895),
+    }
+    append_event(data, "close_synergy_panel", target)
+    save_inspection(data, path)
+    return target
 
 
 def scaled_target(target: dict[str, Any], width: int, height: int) -> dict[str, Any]:

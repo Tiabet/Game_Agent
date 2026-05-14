@@ -14,7 +14,7 @@ from explorer.learning_memory import DEFAULT_LEARNING_MEMORY_PATH, update_learni
 from explorer.memory import ActionRecord, append_record, screen_changed, utc_now
 from explorer.mercenary_knowledge import extract_mercenary_knowledge_from_image
 from explorer.mercenary_memory import append_mercenary_memory
-from explorer.mercenary_inspection import inspection_started, next_list_target
+from explorer.mercenary_inspection import inspection_started, next_knowledge_panel_target, next_list_target
 from explorer.planner import BasePlanner, ExternalFilePlanner, MockPlanner, PlannerAction, append_planner_decision
 from explorer.prompt_builder import build_planner_prompt, prompt_summary
 from explorer.repair import RepairCandidate, generate_repair_candidates, load_repair_memory, modal_candidate, repair_candidate_to_dict, save_successful_repair
@@ -394,7 +394,31 @@ def goal_policy_action(
         )
 
     if inspection_started():
-        return None
+        target = next_knowledge_panel_target(screen_bounds)
+        if target is None:
+            return None
+        if target.get("kind") == "synergy_scroll":
+            return PlannerAction(
+                "swipe",
+                None,
+                f"Mercenary inspection policy scrolls synergy panel before returning to card inspection: {target['id']}.",
+                "goal_policy",
+                x=int(target["x"]),
+                y=int(target["y"]),
+                x2=int(target["x2"]),
+                y2=int(target["y2"]),
+                duration_ms=int(target.get("duration_ms") or 650),
+                selected_active_layer="normal",
+            )
+        return PlannerAction(
+            "tap_xy",
+            None,
+            f"Mercenary inspection policy closes the synergy panel after collecting visible synergy pages: {target['id']}.",
+            "goal_policy",
+            x=int(target["x"]),
+            y=int(target["y"]),
+            selected_active_layer="normal",
+        )
 
     if failed_mercenary_tab_from_state(graph, state_id):
         return None
