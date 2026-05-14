@@ -7,6 +7,8 @@ from typing import Any
 
 
 DEFAULT_INSPECTION_PATH = Path("runtime/mercenary_inspection.json")
+LIST_SCROLL_START_RATIO = 0.76
+LIST_SCROLL_END_RATIO = 0.60
 
 SYNERGY_BUTTON = {"id": "synergy_button", "x_ratio": 0.908, "y_ratio": 0.145, "kind": "synergy"}
 VISIBLE_CARD_SLOTS = (
@@ -116,7 +118,15 @@ def next_list_target(screen_bounds: tuple[int, int], path: str | Path = DEFAULT_
 
     if page < 3:
         data["scroll_count"] = page + 1
-        target = {"id": f"scroll_page_{page + 1}", "kind": "scroll", "x": width // 2, "y": round(height * 0.77), "x2": width // 2, "y2": round(height * 0.36), "duration_ms": 650}
+        target = {
+            "id": f"scroll_page_{page + 1}",
+            "kind": "scroll",
+            "x": width // 2,
+            "y": round(height * LIST_SCROLL_START_RATIO),
+            "x2": width // 2,
+            "y2": round(height * LIST_SCROLL_END_RATIO),
+            "duration_ms": 700,
+        }
         append_event(data, "scroll_mercenary_list", target)
         save_inspection(data, path)
         return target
