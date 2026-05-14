@@ -419,7 +419,7 @@ def goal_policy_action(
     if inspection_started():
         target = next_knowledge_panel_target(screen_bounds)
         if target is None:
-            return None
+            return mercenary_tab_action(screen_bounds, reason="Mercenary inspection policy reopens the Mercenary tab after returning to a non-list screen.")
         if target.get("kind") == "synergy_scroll":
             return PlannerAction(
                 "swipe",
@@ -446,6 +446,10 @@ def goal_policy_action(
     if failed_mercenary_tab_from_state(graph, state_id):
         return None
 
+    return mercenary_tab_action(screen_bounds, reason="Goal policy opens the Mercenary tab using the calibrated lower navigation coordinate.")
+
+
+def mercenary_tab_action(screen_bounds: tuple[int, int], *, reason: str) -> PlannerAction:
     width, height = screen_bounds
     if width <= 0 or height <= 0:
         width, height = 360, 640
@@ -454,7 +458,7 @@ def goal_policy_action(
     return PlannerAction(
         "tap_xy",
         None,
-        "Goal policy opens the Mercenary tab using the calibrated lower navigation coordinate.",
+        reason,
         "goal_policy",
         x=x,
         y=y,
