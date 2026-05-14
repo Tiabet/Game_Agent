@@ -1,0 +1,17 @@
+{
+  "enter_sewer": {
+    "x": 180,
+    "y": 520,
+    "description": "confirmed: calibrated target for enter_sewer"
+  },
+  "stage_left_arrow": {
+    "x": 70,
+    "y": 410,
+    "description": "confirmed: calibrated target for stage_left_arrow"
+  },
+  "stage_enter_button": {
+    "x": 180,
+    "y": 447,
+    "description": "confirmed: calibrated target for stage_enter_button"
+  }
+}

@@ -1,0 +1,20 @@
+adb_path: "C:\\LDPlayer\\LDPlayer9\\adb.exe"
+device_id: "emulator-5554"
+
+screenshot_dir: "runtime/screenshots"
+actions_log: "runtime/actions.jsonl"
+state_graph: "runtime/state_graph.json"
+planner_decisions: "runtime/planner_decisions.jsonl"
+planner_request: "runtime/planner_request.json"
+planner_response: "runtime/planner_response.json"
+goal_progress: "runtime/goal_progress.json"
+current_goal: "inspect_mercenary_synergy"
+dry_run: true
+safe_mode: true
+
+screen_width: 360
+screen_height: 640
+adb_timeout: 15
+settle_seconds: 1.5
+change_threshold: 0.015
+state_hash_threshold: 6

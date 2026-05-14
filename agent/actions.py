@@ -84,6 +84,11 @@ def execute_action(env: GameEnvironment, action: Action, *, dry_run: bool = True
         raise ValueError(f"Unsupported action: {action.action}")
 
 
+def execute_actions(env: GameEnvironment, actions: list[Action], *, dry_run: bool = True) -> None:
+    for action in actions:
+        execute_action(env, action, dry_run=dry_run)
+
+
 def format_action(action: Action) -> str:
     reason = f" reason={action.reason!r}" if action.reason else ""
 
