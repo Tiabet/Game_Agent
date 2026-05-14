@@ -9,6 +9,7 @@ from typing import Any
 DEFAULT_INSPECTION_PATH = Path("runtime/mercenary_inspection.json")
 LIST_SCROLL_START_RATIO = 0.76
 LIST_SCROLL_END_RATIO = 0.60
+MAX_LIST_SCROLL_PAGES = 12
 
 SYNERGY_BUTTON = {"id": "synergy_button", "x_ratio": 0.908, "y_ratio": 0.145, "kind": "synergy"}
 VISIBLE_CARD_SLOTS = (
@@ -116,7 +117,7 @@ def next_list_target(screen_bounds: tuple[int, int], path: str | Path = DEFAULT_
         save_inspection(data, path)
         return target
 
-    if page < 3:
+    if page < MAX_LIST_SCROLL_PAGES:
         data["scroll_count"] = page + 1
         target = {
             "id": f"scroll_page_{page + 1}",
