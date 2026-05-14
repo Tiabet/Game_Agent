@@ -96,6 +96,8 @@ def next_list_target(screen_bounds: tuple[int, int], path: str | Path = DEFAULT_
     visited = data.setdefault("visited_slots", {})
     page = int(data.get("scroll_count", 0))
     for slot_id, x_ratio, y_ratio in VISIBLE_CARD_SLOTS:
+        if page > 0 and slot_id.startswith("equipped_"):
+            continue
         key = f"page_{page}:{slot_id}"
         if key in visited:
             continue
