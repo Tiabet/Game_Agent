@@ -59,9 +59,103 @@ def extract_mercenary_knowledge_from_image(
 
 def extract_mercenary_knowledge(blocks: list[OCRBlock]) -> list[str]:
     updates: list[str] = []
-    updates.extend(extract_synergies(blocks))
+    mercenary_updates = extract_mercenaries(blocks)
+    updates.extend(mercenary_updates)
+    if not mercenary_updates:
+        updates.extend(extract_synergies(blocks))
     updates.extend(extract_recipes(blocks))
     return unique_keep_order(updates)
+
+
+def extract_mercenaries(blocks: list[OCRBlock]) -> list[str]:
+    useful_blocks = [block for block in blocks if block.confidence >= 0.05 and not is_noise(block.text)]
+    if not looks_like_mercenary_detail(useful_blocks):
+        return []
+    name = choose_mercenary_name(useful_blocks)
+    if not name:
+        return []
+    grade = choose_mercenary_grade(useful_blocks)
+    ability = choose_mercenary_ability(useful_blocks)
+    attack = nearest_value_after_label(useful_blocks, "공격")
+    health = nearest_value_after_label(useful_blocks, "체력")
+    attack_speed = nearest_value_after_label(useful_blocks, "공격속")
+    move_speed = nearest_value_after_label(useful_blocks, "이동속")
+    fields = [
+        f"name={name}",
+        f"grade={grade}",
+        "level=unknown",
+        "role=unknown",
+        f"ability={ability or 'unknown'}",
+        "synergies=unknown",
+    ]
+    if attack:
+        fields.append(f"attack={attack}")
+    if health:
+        fields.append(f"health={health}")
+    if attack_speed:
+        fields.append(f"attack_speed={attack_speed}")
+    if move_speed:
+        fields.append(f"move_speed={move_speed}")
+    return ["MERCENARY:" + ";".join(fields)]
+
+
+def looks_like_mercenary_detail(blocks: list[OCRBlock]) -> bool:
+    text = " ".join(block.text for block in blocks)
+    has_stats = any(label in text for label in ("공격력", "체력", "공격속", "이동속"))
+    has_grade_or_buttons = any(label in text for label in ("일반", "장착", "등급"))
+    return has_stats and has_grade_or_buttons
+
+
+def choose_mercenary_name(blocks: list[OCRBlock]) -> str:
+    candidates = [
+        block
+        for block in blocks
+        if 120 <= block.cx <= 240
+        and 150 <= block.cy <= 260
+        and contains_korean(block.text)
+        and not any(label in block.text for label in ("일반", "시너지"))
+    ]
+    if not candidates:
+        return ""
+    return clean_field(max(candidates, key=lambda block: (block.confidence, block.w)).text)
+
+
+def choose_mercenary_grade(blocks: list[OCRBlock]) -> str:
+    text = " ".join(block.text for block in blocks)
+    if "신화" in text:
+        return "mythic"
+    if "전설" in text:
+        return "legendary"
+    if "일반" in text:
+        return "normal"
+    return "unknown"
+
+
+def choose_mercenary_ability(blocks: list[OCRBlock]) -> str:
+    ability_blocks = [
+        block
+        for block in blocks
+        if 315 <= block.cy <= 490
+        and contains_korean(block.text)
+        and not any(label in block.text for label in ("이전 등급", "다음 등", "장착"))
+    ]
+    return clean_field(" ".join(block.text for block in sorted(ability_blocks, key=lambda item: (item.y, item.x))))
+
+
+def nearest_value_after_label(blocks: list[OCRBlock], label: str) -> str:
+    label_blocks = [block for block in blocks if label in block.text]
+    value_blocks = [block for block in blocks if re.fullmatch(r"\d+(?:[.,]\d+)?", block.text.strip())]
+    best: tuple[int, OCRBlock] | None = None
+    for label_block in label_blocks:
+        for value_block in value_blocks:
+            if value_block.cx <= label_block.cx:
+                continue
+            distance = abs(value_block.cy - label_block.cy) + abs(value_block.x - label_block.x)
+            if best is None or distance < best[0]:
+                best = (distance, value_block)
+    if best is None:
+        return ""
+    return best[1].text.replace(",", ".")
 
 
 def extract_synergies(blocks: list[OCRBlock]) -> list[str]:
