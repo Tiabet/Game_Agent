@@ -77,9 +77,11 @@ def apply_knowledge_updates(data: dict[str, Any], observations: list[str]) -> No
             name = update.pop("name", "")
             if is_meaningful_knowledge_key(name):
                 merge_record(knowledge["mercenaries"], name, update)
+                link_mercenary_to_synergies(knowledge, name, update.get("synergies"))
         elif kind == "SYNERGY":
             name = update.pop("name", "")
             if is_meaningful_knowledge_key(name):
+                normalize_synergy_update(update)
                 merge_record(knowledge["synergies"], name, update)
         elif kind == "RECIPE":
             result = update.pop("result", "")
@@ -141,6 +143,61 @@ def merge_record(records: dict[str, Any], key: str, update: dict[str, Any]) -> N
             record[field] = items
         else:
             record[field] = value
+
+
+def normalize_synergy_update(update: dict[str, Any]) -> None:
+    count = update.get("count")
+    if isinstance(count, str) and "/" in count:
+        active, required = count.split("/", 1)
+        update.setdefault("active_count", active.strip())
+        update.setdefault("required_count", required.strip())
+    members = update.get("members")
+    required_members = update.get("required_members")
+    if not is_known_member_value(required_members) and is_known_member_value(members):
+        update["required_members"] = members
+    update.setdefault("required_members", "unknown")
+
+
+def link_mercenary_to_synergies(knowledge: dict[str, Any], mercenary_name: str, synergies: object) -> None:
+    if not is_meaningful_knowledge_key(mercenary_name):
+        return
+    synergy_names = normalize_name_list(synergies)
+    if not synergy_names:
+        return
+    records = knowledge.setdefault("synergies", {})
+    for synergy_name in synergy_names:
+        record = records.setdefault(synergy_name, {})
+        if not isinstance(record, dict):
+            record = {}
+            records[synergy_name] = record
+        record["updated_at"] = datetime.now(timezone.utc).isoformat()
+        existing = normalize_name_list(record.get("required_members"))
+        if mercenary_name not in existing:
+            existing.append(mercenary_name)
+        record["required_members"] = existing
+
+
+def normalize_name_list(value: object) -> list[str]:
+    if isinstance(value, list):
+        values = value
+    elif isinstance(value, str):
+        values = [item.strip() for item in value.split(",")]
+    else:
+        return []
+    result: list[str] = []
+    for item in values:
+        if is_meaningful_knowledge_key(item) and item not in result and not is_placeholder_member(str(item)):
+            result.append(str(item))
+    return result
+
+
+def is_known_member_value(value: object) -> bool:
+    return bool(normalize_name_list(value))
+
+
+def is_placeholder_member(value: str) -> bool:
+    text = value.strip().lower()
+    return text in {"visible icons", "unreadable_visible_icons", "unknown", "unreadable"}
 
 
 def summarize_latest(entries: list[object], *, limit: int = 50) -> list[str]:

@@ -194,7 +194,17 @@ def extract_synergies(blocks: list[OCRBlock]) -> list[str]:
         effect = choose_synergy_effect(row_blocks, name=name)
         if not effect and not any(hint in name for hint in SYNERGY_HINTS):
             continue
-        updates.append(f"SYNERGY:name={name};count={count};effect={effect or 'unknown'};members=visible icons")
+        active_count, required_count = split_count(count)
+        updates.append(
+            "SYNERGY:"
+            f"name={name};"
+            f"count={count};"
+            f"active_count={active_count};"
+            f"required_count={required_count};"
+            f"effect={effect or 'unknown'};"
+            "required_members=unknown;"
+            "members=unreadable_visible_icons"
+        )
     return updates
 
 
@@ -263,6 +273,13 @@ def normalize_count(text: str) -> str:
     if len(compact) == 3 and compact[0].isdigit() and compact[2].isdigit() and compact[1] in {"1", "l", "I", "|"}:
         return f"{compact[0]}/{compact[2]}"
     return ""
+
+
+def split_count(count: str) -> tuple[str, str]:
+    if "/" not in count:
+        return "unknown", "unknown"
+    active, required = count.split("/", 1)
+    return active.strip() or "unknown", required.strip() or "unknown"
 
 
 def looks_like_effect(text: str) -> bool:
