@@ -57,7 +57,7 @@ def load_memory(path: Path) -> dict[str, Any]:
 
 
 def empty_knowledge() -> dict[str, Any]:
-    return {"mercenaries": {}, "synergies": {}, "recipes": {}}
+    return {"mercenaries": {}, "synergies": {}, "recipes": {}, "rules": {}}
 
 
 def apply_knowledge_updates(data: dict[str, Any], observations: list[str]) -> None:
@@ -68,6 +68,7 @@ def apply_knowledge_updates(data: dict[str, Any], observations: list[str]) -> No
     knowledge.setdefault("mercenaries", {})
     knowledge.setdefault("synergies", {})
     knowledge.setdefault("recipes", {})
+    knowledge.setdefault("rules", {})
     for observation in observations:
         update = parse_structured_observation(observation)
         if update is None:
@@ -87,6 +88,10 @@ def apply_knowledge_updates(data: dict[str, Any], observations: list[str]) -> No
             result = update.pop("result", "")
             if is_meaningful_knowledge_key(result):
                 merge_record(knowledge["recipes"], result, update)
+        elif kind == "GAME_RULE":
+            rule_id = update.pop("id", "")
+            if is_meaningful_knowledge_key(rule_id):
+                merge_record(knowledge["rules"], rule_id, update)
 
 
 def is_meaningful_knowledge_key(value: object) -> bool:
@@ -104,7 +109,7 @@ def parse_structured_observation(value: str) -> dict[str, Any] | None:
         return None
     prefix, body = text.split(":", 1)
     kind = prefix.strip().upper()
-    if kind not in {"MERCENARY", "SYNERGY", "RECIPE"}:
+    if kind not in {"MERCENARY", "SYNERGY", "RECIPE", "GAME_RULE"}:
         return None
     fields: dict[str, Any] = {"kind": kind}
     for chunk in body.split(";"):

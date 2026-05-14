@@ -10,6 +10,8 @@ DEFAULT_INSPECTION_PATH = Path("runtime/mercenary_inspection.json")
 LIST_SCROLL_START_RATIO = 0.76
 LIST_SCROLL_END_RATIO = 0.60
 MAX_LIST_SCROLL_PAGES = 12
+FOCUSED_SCOPE = "equipped_and_craftable_legendary"
+FOCUSED_MAX_LIST_SCROLL_PAGES = 3
 
 SYNERGY_BUTTON = {"id": "synergy_button", "x_ratio": 0.908, "y_ratio": 0.145, "kind": "synergy"}
 VISIBLE_CARD_SLOTS = (
@@ -41,6 +43,7 @@ VISIBLE_CARD_SLOTS = (
     ("grid_r3c6", 0.742, 0.739),
     ("grid_r3c7", 0.861, 0.739),
 )
+EQUIPPED_SLOT_IDS = frozenset(slot_id for slot_id, _x, _y in VISIBLE_CARD_SLOTS if slot_id.startswith("equipped_"))
 
 
 def load_inspection(path: str | Path = DEFAULT_INSPECTION_PATH) -> dict[str, Any]:
@@ -56,6 +59,7 @@ def load_inspection(path: str | Path = DEFAULT_INSPECTION_PATH) -> dict[str, Any
     raw.setdefault("version", 1)
     raw.setdefault("opened_synergy", False)
     raw.setdefault("closed_synergy", False)
+    raw.setdefault("scope", "full")
     raw.setdefault("synergy_scroll_count", 0)
     raw.setdefault("visited_slots", {})
     raw.setdefault("scroll_count", 0)
@@ -68,6 +72,7 @@ def empty_inspection() -> dict[str, Any]:
         "version": 1,
         "opened_synergy": False,
         "closed_synergy": False,
+        "scope": "full",
         "synergy_scroll_count": 0,
         "visited_slots": {},
         "scroll_count": 0,
@@ -99,6 +104,8 @@ def next_list_target(screen_bounds: tuple[int, int], path: str | Path = DEFAULT_
     visited = data.setdefault("visited_slots", {})
     page = int(data.get("scroll_count", 0))
     for slot_id, x_ratio, y_ratio in VISIBLE_CARD_SLOTS:
+        if not slot_allowed_for_scope(slot_id, page, str(data.get("scope") or "full")):
+            continue
         if page > 0 and slot_id.startswith("equipped_"):
             continue
         key = f"page_{page}:{slot_id}"
@@ -117,7 +124,8 @@ def next_list_target(screen_bounds: tuple[int, int], path: str | Path = DEFAULT_
         save_inspection(data, path)
         return target
 
-    if page < MAX_LIST_SCROLL_PAGES:
+    max_page = max_scroll_page_for_scope(str(data.get("scope") or "full"))
+    if page < max_page:
         data["scroll_count"] = page + 1
         target = {
             "id": f"scroll_page_{page + 1}",
@@ -132,6 +140,22 @@ def next_list_target(screen_bounds: tuple[int, int], path: str | Path = DEFAULT_
         save_inspection(data, path)
         return target
     return None
+
+
+def slot_allowed_for_scope(slot_id: str, page: int, scope: str) -> bool:
+    if scope != FOCUSED_SCOPE:
+        return True
+    if page == 0:
+        return slot_id in EQUIPPED_SLOT_IDS
+    if 1 <= page <= FOCUSED_MAX_LIST_SCROLL_PAGES:
+        return not slot_id.startswith("equipped_")
+    return False
+
+
+def max_scroll_page_for_scope(scope: str) -> int:
+    if scope == FOCUSED_SCOPE:
+        return FOCUSED_MAX_LIST_SCROLL_PAGES
+    return MAX_LIST_SCROLL_PAGES
 
 
 def next_knowledge_panel_target(screen_bounds: tuple[int, int], path: str | Path = DEFAULT_INSPECTION_PATH) -> dict[str, Any] | None:

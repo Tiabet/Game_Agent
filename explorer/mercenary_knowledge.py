@@ -223,6 +223,8 @@ def extract_recipes(blocks: list[OCRBlock]) -> list[str]:
         grade = "legendary"
     if "신화" in text:
         grade = "mythic"
+    if result == "unknown":
+        return []
     return [f"RECIPE:result={result};grade={grade};requires={text};source=visible OCR text"]
 
 
