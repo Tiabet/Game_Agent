@@ -33,7 +33,13 @@ SYNERGY_HINTS = (
     "몬스터",
     "%",
 )
-RECIPE_HINTS = ("전설", "신화", "조합", "필요", "재료")
+GRADE_HINTS = ("일반", "희귀", "전설", "신화")
+RECIPE_HINTS = ("조합", "필요", "재료", "조합 가능", "가능 용병")
+ATTACK_LABELS = ("공격력",)
+HEALTH_LABELS = ("체력",)
+ATTACK_SPEED_LABELS = ("공격속", "공격숙도")
+MOVE_SPEED_LABELS = ("이동속", "디동속도", "동속도")
+STAT_LABELS = ATTACK_LABELS + HEALTH_LABELS + ATTACK_SPEED_LABELS + MOVE_SPEED_LABELS
 
 
 def extract_mercenary_knowledge_from_image(
@@ -58,11 +64,12 @@ def extract_mercenary_knowledge_from_image(
 
 
 def extract_mercenary_knowledge(blocks: list[OCRBlock]) -> list[str]:
+    useful_blocks = [block for block in blocks if block.confidence >= 0.05 and not is_noise(block.text)]
+    if looks_like_mercenary_detail(useful_blocks):
+        return unique_keep_order(extract_mercenaries(blocks))
+
     updates: list[str] = []
-    mercenary_updates = extract_mercenaries(blocks)
-    updates.extend(mercenary_updates)
-    if not mercenary_updates:
-        updates.extend(extract_synergies(blocks))
+    updates.extend(extract_synergies(blocks))
     updates.extend(extract_recipes(blocks))
     return unique_keep_order(updates)
 
@@ -76,10 +83,10 @@ def extract_mercenaries(blocks: list[OCRBlock]) -> list[str]:
         return []
     grade = choose_mercenary_grade(useful_blocks)
     ability = choose_mercenary_ability(useful_blocks)
-    attack = nearest_value_after_label(useful_blocks, "공격")
-    health = nearest_value_after_label(useful_blocks, "체력")
-    attack_speed = nearest_value_after_label(useful_blocks, "공격속")
-    move_speed = nearest_value_after_label(useful_blocks, "이동속")
+    attack = nearest_value_after_label(useful_blocks, ATTACK_LABELS)
+    health = nearest_value_after_label(useful_blocks, HEALTH_LABELS)
+    attack_speed = nearest_value_after_label(useful_blocks, ATTACK_SPEED_LABELS)
+    move_speed = nearest_value_after_label(useful_blocks, MOVE_SPEED_LABELS)
     fields = [
         f"name={name}",
         f"grade={grade}",
@@ -101,19 +108,23 @@ def extract_mercenaries(blocks: list[OCRBlock]) -> list[str]:
 
 def looks_like_mercenary_detail(blocks: list[OCRBlock]) -> bool:
     text = " ".join(block.text for block in blocks)
-    has_stats = any(label in text for label in ("공격력", "체력", "공격속", "이동속"))
-    has_grade_or_buttons = any(label in text for label in ("일반", "장착", "등급"))
-    return has_stats and has_grade_or_buttons
+    stat_label_hits = sum(1 for label in STAT_LABELS if label in text)
+    stat_value_hits = sum(
+        1
+        for block in blocks
+        if 130 <= block.x <= 285 and 255 <= block.cy <= 315 and looks_like_stat_value(block.text)
+    )
+    has_name = any(is_probable_detail_name(block) for block in blocks)
+    has_grade_or_buttons = any(label in text for label in (*GRADE_HINTS, "장착", "등급"))
+    has_detail_stats = stat_label_hits >= 2 or stat_value_hits >= 2
+    return has_name and has_detail_stats and has_grade_or_buttons
 
 
 def choose_mercenary_name(blocks: list[OCRBlock]) -> str:
     candidates = [
         block
         for block in blocks
-        if 120 <= block.cx <= 240
-        and 150 <= block.cy <= 260
-        and contains_korean(block.text)
-        and not any(label in block.text for label in ("일반", "시너지"))
+        if is_probable_detail_name(block)
     ]
     if not candidates:
         return ""
@@ -142,24 +153,29 @@ def choose_mercenary_ability(blocks: list[OCRBlock]) -> str:
     return clean_field(" ".join(block.text for block in sorted(ability_blocks, key=lambda item: (item.y, item.x))))
 
 
-def nearest_value_after_label(blocks: list[OCRBlock], label: str) -> str:
-    label_blocks = [block for block in blocks if label in block.text]
-    value_blocks = [block for block in blocks if re.fullmatch(r"\d+(?:[.,]\d+)?", block.text.strip())]
+def nearest_value_after_label(blocks: list[OCRBlock], labels: tuple[str, ...]) -> str:
+    label_blocks = [block for block in blocks if any(label in block.text for label in labels)]
+    value_blocks = [(block, extract_first_number(block.text)) for block in blocks]
+    value_blocks = [(block, value) for block, value in value_blocks if value]
     best: tuple[int, OCRBlock] | None = None
     for label_block in label_blocks:
-        for value_block in value_blocks:
+        for value_block, _value in value_blocks:
             if value_block.cx <= label_block.cx:
                 continue
-            distance = abs(value_block.cy - label_block.cy) + abs(value_block.x - label_block.x)
+            if abs(value_block.cy - label_block.cy) > 24:
+                continue
+            distance = abs(value_block.cy - label_block.cy) * 3 + abs(value_block.x - label_block.x)
             if best is None or distance < best[0]:
                 best = (distance, value_block)
     if best is None:
         return ""
-    return best[1].text.replace(",", ".")
+    return extract_first_number(best[1].text)
 
 
 def extract_synergies(blocks: list[OCRBlock]) -> list[str]:
     useful_blocks = [block for block in blocks if block.confidence >= 0.05 and not is_noise(block.text)]
+    if looks_like_mercenary_detail(useful_blocks):
+        return []
     count_blocks = [(block, normalize_count(block.text)) for block in useful_blocks]
     count_blocks = [(block, count) for block, count in count_blocks if count]
     updates: list[str] = []
@@ -183,6 +199,9 @@ def extract_synergies(blocks: list[OCRBlock]) -> list[str]:
 
 def extract_recipes(blocks: list[OCRBlock]) -> list[str]:
     text = " ".join(block.text for block in blocks if block.confidence >= 0.08)
+    useful_blocks = [block for block in blocks if block.confidence >= 0.05 and not is_noise(block.text)]
+    if looks_like_mercenary_detail(useful_blocks):
+        return []
     if not any(hint in text for hint in RECIPE_HINTS):
         return []
     if "시너지" in text and not any(hint in text for hint in ("전설", "신화", "조합", "필요", "재료")):
@@ -231,7 +250,11 @@ def choose_synergy_effect(row_blocks: list[OCRBlock], *, name: str) -> str:
 
 def normalize_count(text: str) -> str:
     compact = re.sub(r"\s+", "", text)
+    if "." in compact or "," in compact:
+        return ""
     if len(compact) > 5:
+        return ""
+    if len(compact) > 3 and not any(separator in compact for separator in {"/", "|", "l", "I"}):
         return ""
     match = COUNT_RE.search(compact)
     if match:
@@ -247,6 +270,33 @@ def looks_like_effect(text: str) -> bool:
 
 def contains_korean(text: str) -> bool:
     return any("가" <= char <= "힣" for char in text)
+
+
+def is_probable_detail_name(block: OCRBlock) -> bool:
+    text = clean_field(block.text)
+    if not text:
+        return False
+    if not (110 <= block.cx <= 250 and 175 <= block.cy <= 255):
+        return False
+    if len(text) > 14:
+        return False
+    if looks_like_stat_value(text) or normalize_count(text):
+        return False
+    blocked_terms = (*GRADE_HINTS, "시너지", "공격", "체력", "속도", "Lv", "LV", "level")
+    if any(term in text for term in blocked_terms):
+        return False
+    return block.confidence >= 0.08
+
+
+def looks_like_stat_value(text: str) -> bool:
+    return bool(extract_first_number(text))
+
+
+def extract_first_number(text: str) -> str:
+    match = re.search(r"\d+(?:[.,]\d+)?", text.strip())
+    if not match:
+        return ""
+    return match.group(0).replace(",", ".")
 
 
 def is_noise(text: str) -> bool:
