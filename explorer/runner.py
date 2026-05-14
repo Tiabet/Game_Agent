@@ -351,8 +351,22 @@ def goal_policy_action(
     if str(current_goal.get("goal_id") or "") != "inspect_mercenary_synergy":
         return None
     in_mercenary_tab = reached_by_mercenary_tab(graph, state_id)
+    in_mercenary_detail = reached_by_mercenary_card(graph, state_id)
+    knowledge_panel_close = visible_knowledge_panel_close_candidate(visual_candidates, screen_bounds=screen_bounds)
 
     safe_modal = safest_popup_dismiss_candidate(visual_candidates, screen_bounds=screen_bounds)
+    if knowledge_panel_close is not None and inspection_started() and not in_mercenary_tab and not in_mercenary_detail:
+        x, y = knowledge_panel_close
+        return PlannerAction(
+            "tap_xy",
+            None,
+            "Mercenary inspection policy closes a visible knowledge panel whose runtime state was already marked complete.",
+            "goal_policy",
+            x=x,
+            y=y,
+            selected_active_layer="normal",
+        )
+
     if safe_modal is not None and not in_mercenary_tab:
         x, y = safe_modal.tap_point or (safe_modal.x, safe_modal.y)
         return PlannerAction(
@@ -363,6 +377,15 @@ def goal_policy_action(
             x=x,
             y=y,
             selected_active_layer="modal",
+        )
+
+    if in_mercenary_detail:
+        return PlannerAction(
+            "back",
+            None,
+            "Mercenary inspection policy returns from mercenary detail immediately after OCR capture.",
+            "goal_policy",
+            selected_active_layer="normal",
         )
 
     if in_mercenary_tab:
@@ -482,6 +505,32 @@ def popup_dismiss_priority(candidate: Candidate) -> tuple[int, int, float, float
     return detected_button, not_close, near_expected_cancel, lower_dialog_band, candidate.score
 
 
+def visible_knowledge_panel_close_candidate(candidates: list[Candidate], *, screen_bounds: tuple[int, int]) -> tuple[int, int] | None:
+    width, height = screen_bounds
+    if width <= 0 or height <= 0:
+        width, height = 360, 640
+    has_large_panel = False
+    close_candidates: list[Candidate] = []
+    for candidate in candidates:
+        if candidate.layer != "modal":
+            continue
+        if candidate.kind == "popup" and candidate.bbox is not None:
+            _, top, box_width, box_height = candidate.bbox
+            if box_width >= width * 0.70 and box_height >= height * 0.45 and top <= height * 0.32:
+                has_large_panel = True
+        text = f"{candidate.id} {candidate.label_guess}".lower()
+        if "close" in text or "/x" in text:
+            close_candidates.append(candidate)
+    if not has_large_panel:
+        return None
+    lower_close_candidates = [candidate for candidate in close_candidates if candidate.y >= height * 0.50]
+    if lower_close_candidates:
+        candidate = max(lower_close_candidates, key=lambda item: item.y)
+        x, y = candidate.tap_point or (candidate.x, candidate.y)
+        return int(x), int(y)
+    return width // 2, round(height * 0.895)
+
+
 def reached_by_mercenary_tab(graph: StateGraph, state_id: str) -> bool:
     for edge in reversed(graph.edges):
         if edge.get("to_state") != state_id or edge.get("changed") is not True:
@@ -492,6 +541,19 @@ def reached_by_mercenary_tab(graph: StateGraph, state_id: str) -> bool:
         x = numeric_int(action.get("x"))
         y = numeric_int(action.get("y"))
         if x is not None and y is not None and 45 <= x <= 125 and y >= 560:
+            return True
+    return False
+
+
+def reached_by_mercenary_card(graph: StateGraph, state_id: str) -> bool:
+    for edge in reversed(graph.edges):
+        if edge.get("to_state") != state_id or edge.get("changed") is not True:
+            continue
+        action = edge.get("action")
+        if not isinstance(action, dict) or action.get("type") != "tap_xy":
+            continue
+        reason = str(action.get("label_guess") or action.get("reason") or "")
+        if "mercenary_card" in reason or "Selected mercenary inspection target page_" in reason:
             return True
     return False
 
