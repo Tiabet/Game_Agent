@@ -14,7 +14,25 @@ from tools.korean_ocr import OCRBlock, blocks_to_dicts, knowledge_panel_crop, oc
 
 DEFAULT_OCR_LOG_PATH = Path("runtime/ocr_observations.jsonl")
 COUNT_RE = re.compile(r"(?P<a>\d)\s*[/|lI1]\s*(?P<b>\d)")
-SYNERGY_HINTS = ("공격", "피해", "확률", "회복", "시간", "증가", "감소", "체력", "생성", "기절", "스턴", "몬스터", "%")
+SYNERGY_HINTS = (
+    "공격",
+    "피해",
+    "확률",
+    "회복",
+    "시간",
+    "동안",
+    "무적",
+    "부활",
+    "상태",
+    "증가",
+    "감소",
+    "체력",
+    "생성",
+    "기절",
+    "스턴",
+    "몬스터",
+    "%",
+)
 RECIPE_HINTS = ("전설", "신화", "조합", "필요", "재료")
 
 
@@ -119,6 +137,8 @@ def choose_synergy_effect(row_blocks: list[OCRBlock], *, name: str) -> str:
 
 def normalize_count(text: str) -> str:
     compact = re.sub(r"\s+", "", text)
+    if len(compact) > 5:
+        return ""
     match = COUNT_RE.search(compact)
     if match:
         return f"{match.group('a')}/{match.group('b')}"
