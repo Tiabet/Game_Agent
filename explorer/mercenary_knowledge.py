@@ -13,6 +13,7 @@ from tools.korean_ocr import OCRBlock, blocks_to_dicts, knowledge_panel_crop, oc
 
 
 DEFAULT_OCR_LOG_PATH = Path("runtime/ocr_observations.jsonl")
+DEFAULT_RECIPE_MATERIAL_DIR = Path("runtime/recipe_materials")
 COUNT_RE = re.compile(r"(?P<a>\d)\s*[/|lI1]\s*(?P<b>\d)")
 SYNERGY_HINTS = (
     "공격",
@@ -59,6 +60,8 @@ def extract_mercenary_knowledge_from_image(
         append_ocr_log(log_path, state_id=state_id, image_path=image_path, blocks=[], updates=[], error=repr(exc))
         return []
     updates = extract_mercenary_knowledge(blocks)
+    updates.extend(extract_detail_recipe_from_image(image_path, blocks))
+    updates = unique_keep_order(updates)
     append_ocr_log(log_path, state_id=state_id, image_path=image_path, blocks=blocks, updates=updates, error="")
     return updates
 
@@ -226,6 +229,110 @@ def extract_recipes(blocks: list[OCRBlock]) -> list[str]:
     if result == "unknown":
         return []
     return [f"RECIPE:result={result};grade={grade};requires={text};source=visible OCR text"]
+
+
+def extract_detail_recipe_from_image(
+    image_path: str | Path,
+    blocks: list[OCRBlock],
+    *,
+    material_dir: str | Path = DEFAULT_RECIPE_MATERIAL_DIR,
+) -> list[str]:
+    useful_blocks = [block for block in blocks if block.confidence >= 0.05 and not is_noise(block.text)]
+    if not looks_like_mercenary_detail(useful_blocks):
+        return []
+    result = choose_mercenary_name(useful_blocks)
+    if not result:
+        return []
+    grade = choose_mercenary_grade(useful_blocks)
+    if grade not in {"legendary", "mythic"}:
+        return []
+    try:
+        with Image.open(image_path) as image:
+            slots = extract_recipe_material_slots(image, result=result, material_dir=Path(material_dir))
+    except Exception:
+        slots = []
+    if not slots:
+        return []
+    slot_refs = [slot["ref"] for slot in slots]
+    slot_hashes = [slot["hash"] for slot in slots]
+    fields = [
+        f"result={result}",
+        f"grade={grade}",
+        "requires=visual material slots from detail bottom",
+        "slot_order=unique,rare,normal",
+        f"material_slots={len(slots)}",
+        f"material_refs={','.join(slot_refs)}",
+        f"material_icon_hashes={','.join(slot_hashes)}",
+        f"required_unique={slot_refs[0] if len(slot_refs) > 0 else 'unknown'}",
+        f"required_rare={slot_refs[1] if len(slot_refs) > 1 else 'unknown'}",
+        f"required_normal={slot_refs[2] if len(slot_refs) > 2 else 'unknown'}",
+        "source=legendary/mythic detail bottom material icons",
+    ]
+    return ["RECIPE:" + ";".join(fields)]
+
+
+def extract_recipe_material_slots(
+    image: Image.Image,
+    *,
+    result: str,
+    material_dir: Path,
+) -> list[dict[str, str]]:
+    width, height = image.size
+    centers = (
+        (round(width * 0.394), round(height * 0.943)),
+        (round(width * 0.503), round(height * 0.943)),
+        (round(width * 0.611), round(height * 0.943)),
+    )
+    material_dir.mkdir(parents=True, exist_ok=True)
+    slots: list[dict[str, str]] = []
+    for index, (cx, cy) in enumerate(centers, start=1):
+        crop = clamp_box((cx - 15, cy - 15, cx + 15, cy + 15), image.size)
+        if crop is None:
+            continue
+        icon = image.crop(crop).convert("RGB")
+        if not image_crop_has_content(icon):
+            continue
+        icon_hash = average_hash(icon)
+        filename = f"{safe_filename(result)}_slot{index}_{icon_hash}.png"
+        output_path = material_dir / filename
+        icon.save(output_path)
+        slots.append({"slot": str(index), "hash": icon_hash, "ref": f"slot{index}:{icon_hash}", "path": str(output_path)})
+    return slots
+
+
+def clamp_box(box: tuple[int, int, int, int], size: tuple[int, int]) -> tuple[int, int, int, int] | None:
+    width, height = size
+    left, top, right, bottom = box
+    left = max(0, min(width - 1, left))
+    top = max(0, min(height - 1, top))
+    right = max(left + 1, min(width, right))
+    bottom = max(top + 1, min(height, bottom))
+    if right - left < 8 or bottom - top < 8:
+        return None
+    return left, top, right, bottom
+
+
+def image_crop_has_content(image: Image.Image) -> bool:
+    grayscale = image.convert("L")
+    pixels = list(grayscale.getdata())
+    if not pixels:
+        return False
+    mean = sum(pixels) / len(pixels)
+    variance = sum((pixel - mean) ** 2 for pixel in pixels) / len(pixels)
+    return variance > 80
+
+
+def average_hash(image: Image.Image) -> str:
+    grayscale = image.convert("L").resize((8, 8), Image.Resampling.LANCZOS)
+    pixels = list(grayscale.getdata())
+    mean = sum(pixels) / len(pixels)
+    bits = "".join("1" if pixel >= mean else "0" for pixel in pixels)
+    return f"{int(bits, 2):016x}"
+
+
+def safe_filename(value: str) -> str:
+    cleaned = re.sub(r"[^0-9A-Za-z가-힣_-]+", "_", clean_field(value)).strip("_")
+    return cleaned or "unknown"
 
 
 def choose_synergy_name(row_blocks: list[OCRBlock], count_block: OCRBlock) -> str:
