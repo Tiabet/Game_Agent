@@ -117,7 +117,8 @@ def looks_like_mercenary_detail(blocks: list[OCRBlock]) -> bool:
     has_name = any(is_probable_detail_name(block) for block in blocks)
     has_grade_or_buttons = any(label in text for label in (*GRADE_HINTS, "장착", "등급"))
     has_detail_stats = stat_label_hits >= 2 or stat_value_hits >= 2
-    return has_name and has_detail_stats and has_grade_or_buttons
+    has_strong_detail_layout = stat_label_hits >= 3 and stat_value_hits >= 3
+    return has_name and has_detail_stats and (has_grade_or_buttons or has_strong_detail_layout)
 
 
 def choose_mercenary_name(blocks: list[OCRBlock]) -> str:
